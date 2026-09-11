@@ -53,6 +53,7 @@ x-airflow-common: &airflow-common
     - ./data:/opt/airflow/data
     - ./tests:/opt/airflow/tests
     - ./pytest.ini:/opt/airflow/pytest.ini:ro
+    - ./ruff.toml:/opt/airflow/ruff.toml:ro
     - airflow_logs:/opt/airflow/logs
 
   networks:
@@ -159,8 +160,11 @@ services:
       postgres:
         condition: service_healthy
 
-    entrypoint: /bin/bash
+    # Deliberately NOT overriding entrypoint: the image's entrypoint registers a
+    # passwd entry for whatever AIRFLOW_UID is set to, and Airflow refuses to run
+    # as a user it cannot name.
     command:
+      - bash
       - -c
       - |
         set -e
