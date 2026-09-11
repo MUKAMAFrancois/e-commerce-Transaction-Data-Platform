@@ -24,7 +24,7 @@ from psycopg2.extras import execute_values
 
 from common.quality import LOAD_ORDER, SPECS, clean, validate
 
-BUCKET = os.getenv("MINIO_RAW_BUCKET", "raw-transactions")
+BUCKET = os.getenv("MINIO_RAW_BUCKET", "ecommerce-raw")
 PROCESSED_PREFIX = "processed/"
 QUARANTINE_PREFIX = "quarantine/"
 SCHEMA_SQL = Path(__file__).parent / "sql" / "schema.sql"

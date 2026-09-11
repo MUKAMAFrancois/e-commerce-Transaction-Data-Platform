@@ -39,6 +39,6 @@ MAX_PAYMENT_DELAY = timedelta(days=3)
 MINIO_ENDPOINT_URL = os.getenv("MINIO_ENDPOINT_URL", "http://localhost:9000")
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minio_admin")
 MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minio_password")
-MINIO_RAW_BUCKET = os.getenv("MINIO_RAW_BUCKET", "raw-transactions")
+MINIO_RAW_BUCKET = os.getenv("MINIO_RAW_BUCKET", "ecommerce-raw")
 
 DATASETS = ("customers", "products", "orders", "order_items", "payments")

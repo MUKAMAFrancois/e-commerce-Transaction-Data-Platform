@@ -109,14 +109,14 @@ consistency in PostgreSQL and fails the run if anything is violated.
 
 ```bash
 # Inspect quarantined rows
-docker compose exec minio sh -c 'mc alias set local http://localhost:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null && mc ls --recursive local/raw-transactions/quarantine'
+docker compose exec minio sh -c 'mc alias set local http://localhost:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null && mc ls --recursive local/ecommerce-raw/quarantine'
 ```
 
 ## Inspect
 
 ```bash
 # List objects in MinIO
-docker compose exec minio sh -c 'mc alias set local http://localhost:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null && mc ls --recursive local/raw-transactions'
+docker compose exec minio sh -c 'mc alias set local http://localhost:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null && mc ls --recursive local/ecommerce-raw'
 
 # Query the analytics database
 docker compose exec postgres psql -U ecommerce_user -d ecommerce_db
