@@ -1,9 +1,10 @@
 import os
 
-import boto3
-import psycopg2
 import pytest
-import requests
+
+# psycopg2, boto3 and requests are imported inside the fixtures rather than here:
+# conftest is loaded for every run, and the unit suite must stay runnable on a
+# bare checkout that has no database or object-store drivers installed.
 
 BUCKET = os.getenv("MINIO_RAW_BUCKET", "ecommerce-raw")
 METABASE_URL = os.getenv("METABASE_URL", "http://metabase:3000").rstrip("/")
@@ -11,6 +12,8 @@ METABASE_URL = os.getenv("METABASE_URL", "http://metabase:3000").rstrip("/")
 
 @pytest.fixture(scope="session")
 def db():
+    import psycopg2
+
     connection = psycopg2.connect(
         host=os.getenv("POSTGRES_HOST", "postgres"),
         port=5432,
@@ -34,6 +37,8 @@ def query(db):
 
 @pytest.fixture(scope="session")
 def s3():
+    import boto3
+
     return boto3.client(
         "s3",
         endpoint_url=os.getenv("MINIO_ENDPOINT_URL", "http://minio:9000"),
@@ -49,6 +54,8 @@ def bucket():
 
 @pytest.fixture(scope="session")
 def metabase():
+    import requests
+
     session = requests.Session()
     response = session.post(
         f"{METABASE_URL}/api/session",

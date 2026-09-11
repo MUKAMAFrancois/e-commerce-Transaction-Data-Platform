@@ -1,5 +1,7 @@
-import psycopg2
 import pytest
+
+# Skipped rather than erroring when collected on a machine without the driver.
+psycopg2 = pytest.importorskip("psycopg2")
 
 pytestmark = pytest.mark.integration
 

@@ -1,7 +1,8 @@
 import os
 
 import pytest
-import requests
+
+requests = pytest.importorskip("requests")
 
 pytestmark = pytest.mark.integration
 
