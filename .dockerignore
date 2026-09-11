@@ -1,0 +1,12 @@
+.git
+.github
+.venv
+venv
+__pycache__
+**/__pycache__
+*.pyc
+.env
+data/
+drafts/
+README.md
+writeup.md

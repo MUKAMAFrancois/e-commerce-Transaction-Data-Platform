@@ -1,54 +1,45 @@
-# E-commerce Transaction Data Platform
-#
-# Data flow:
-#   data_generator -> MinIO (raw CSV) -> Airflow (clean/transform) -> PostgreSQL -> Metabase
-#
-# All credentials come from .env (see .env.example). Start with:
-#   docker compose up -d
+# data_generator -> MinIO -> Airflow -> PostgreSQL -> Metabase
+# Credentials come from .env (see .env.example).
 
-# Shared Airflow definition
-#
-# The init job, the webserver and the scheduler are three containers that must
-# agree on image, settings and mounts. Defining that once here keeps them from
-# drifting apart.
-# 
 x-airflow-common: &airflow-common
-  image: apache/airflow:2.10.5
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: ecommerce/airflow:2.10.5
 
-  # Runs as the image's airflow user by default. Override AIRFLOW_UID with your
-  # own `id -u` on Linux/CI, otherwise Airflow cannot write into ./dags or logs.
+  # Set AIRFLOW_UID to your own `id -u` on Linux/CI or Airflow cannot write logs.
   user: "${AIRFLOW_UID:-50000}:0"
 
   environment: &airflow-common-env
-    # Airflow's metadata lives in its OWN database, not the analytics one.
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${AIRFLOW_DB}
 
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__CORE__DEFAULT_TIMEZONE: UTC
 
-    # Encrypts saved connection passwords / signs UI sessions. Regenerating
-    # these invalidates every stored connection, so they are pinned in .env.
+    # Pinned in .env: regenerating these orphans every stored connection.
     AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
     AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
 
-    # Lets CI trigger DAGs over the REST API for the data-flow integration test.
     AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.session,airflow.api.auth.backend.basic_auth
 
-    # Pre-registers the MinIO connection as conn_id "minio_s3", so no one has to
-    # click it into the UI by hand and CI gets the same wiring. The endpoint URL
-    # is percent-encoded because it is a query value inside a connection URI.
+    # endpoint_url is percent-encoded: it is a query value inside a conn URI.
     AIRFLOW_CONN_MINIO_S3: aws://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@?endpoint_url=http%3A%2F%2Fminio%3A9000
-
-    # Target for the pipeline's load step (the analytics database).
     AIRFLOW_CONN_ANALYTICS_DB: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
 
+    MINIO_ENDPOINT_URL: http://minio:9000
+    MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+    MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
     MINIO_RAW_BUCKET: ${MINIO_RAW_BUCKET}
+
+    # Airflow does not put AIRFLOW_HOME itself on sys.path.
+    PYTHONPATH: /opt/airflow
 
   volumes:
     - ./dags:/opt/airflow/dags
     - ./data_generator:/opt/airflow/data_generator
     - ./config:/opt/airflow/config
+    - ./data:/opt/airflow/data
     - airflow_logs:/opt/airflow/logs
 
   networks:
@@ -56,10 +47,7 @@ x-airflow-common: &airflow-common
 
 
 services:
-  # 1. PostgreSQL - hosts two databases:
-  #      ${POSTGRES_DB}  analytics tables, read by Metabase
-  #      ${AIRFLOW_DB}   Airflow's internal metadata (created by config/postgres/init)
-
+  # Two databases: ${POSTGRES_DB} for analytics, ${AIRFLOW_DB} for Airflow metadata.
   postgres:
     image: postgres:16
     container_name: ecommerce_postgres
@@ -68,7 +56,6 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-      # Read by the init script below to name the second database.
       AIRFLOW_DB: ${AIRFLOW_DB}
 
     ports:
@@ -76,12 +63,9 @@ services:
 
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # Scripts here run ONLY on first boot of an empty volume. After changing
-      # them you must `docker compose down -v` for them to run again.
+      # Runs only on first boot of an empty volume; `down -v` to re-run.
       - ./config/postgres/init:/docker-entrypoint-initdb.d:ro
 
-    # Everything downstream waits on this instead of merely waiting for the
-    # container to start, which would race the database becoming connectable.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
@@ -95,10 +79,6 @@ services:
     restart: unless-stopped
 
 
-  # 
-  # 2. MinIO - S3-compatible raw layer. The generator writes CSVs here and
-  #    Airflow reads them back out.
-  # 
   minio:
     image: minio/minio:latest
     container_name: ecommerce_minio
@@ -129,9 +109,7 @@ services:
     restart: unless-stopped
 
 
-  # 2b. MinIO bucket bootstrap - one-shot, creates the raw landing bucket.
-  #     Without this the generator has nowhere to write on a fresh volume.
-  # 
+  # Creates the raw landing bucket on a fresh volume.
   minio-init:
     image: minio/mc:latest
     container_name: ecommerce_minio_init
@@ -145,8 +123,7 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       MINIO_RAW_BUCKET: ${MINIO_RAW_BUCKET}
 
-    # $$ escapes compose interpolation so the shell inside the container
-    # expands these, not docker compose on the host.
+    # $$ defers expansion to the container's shell, not compose.
     entrypoint: >
       /bin/sh -c "
       mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD} &&
@@ -157,13 +134,10 @@ services:
     networks:
       - ecommerce_network
 
-    # A bootstrap job is expected to exit. Restarting it would loop forever.
     restart: "no"
 
 
-  # 3a. Airflow bootstrap - one-shot: builds the metadata schema and the admin
-  #     user. The webserver and scheduler refuse to start until this succeeds.
-  
+  # Builds the metadata schema and admin user; the other two gate on it.
   airflow-init:
     <<: *airflow-common
     container_name: ecommerce_airflow_init
@@ -190,9 +164,6 @@ services:
     restart: "no"
 
 
-  # 
-  # 3b. Airflow webserver - the UI at localhost:${AIRFLOW_HOST_PORT}.
-  # 
   airflow-webserver:
     <<: *airflow-common
     container_name: ecommerce_airflow_webserver
@@ -218,9 +189,7 @@ services:
     restart: unless-stopped
 
 
-  # 3c. Airflow scheduler - the process that actually runs DAGs. Without it the
-  #     UI loads but nothing is ever executed.
-
+  # Without this nothing ever executes, however healthy the UI looks.
   airflow-scheduler:
     <<: *airflow-common
     container_name: ecommerce_airflow_scheduler
@@ -242,8 +211,6 @@ services:
 
     restart: unless-stopped
 
-  # 4. Metabase - dashboards over the analytics database.
-  
   metabase:
     image: metabase/metabase:latest
     container_name: ecommerce_metabase
@@ -253,9 +220,7 @@ services:
         condition: service_healthy
 
     environment:
-      # Metabase's own application database (saved questions, dashboards).
-      # Kept as a file on a volume; stated explicitly rather than relying on
-      # the image default so the mount path below cannot silently mismatch.
+      # Explicit so it cannot drift from the mount path below.
       MB_DB_FILE: /metabase.db/metabase.db
 
     ports:
@@ -277,9 +242,6 @@ services:
     restart: unless-stopped
 
 
-# 
-# Named volumes: `docker compose down` keeps these, `down -v` destroys them.
-# 
 volumes:
   postgres_data:
     name: ecommerce_postgres_data
@@ -294,8 +256,7 @@ volumes:
     name: ecommerce_metabase_data
 
 
-# Shared bridge network. Containers reach each other by service name
-# (postgres:5432, minio:9000) - never localhost.
+# Containers reach each other by service name, never localhost.
 
 networks:
   ecommerce_network:
