@@ -10,3 +10,8 @@ COPY requirements.txt requirements-dev.txt /tmp/
 # Airflow's constraints keep a transitive upgrade from breaking the providers.
 RUN pip install --no-cache-dir -r /tmp/requirements-dev.txt \
     --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
+
+# Unconstrained on purpose: Airflow's constraints pin ruff to 0.5.5, which
+# conflicts with the version CI lints against. Ruff is a standalone binary with
+# no Python dependencies, so it cannot affect the providers.
+RUN pip install --no-cache-dir "ruff>=0.6.0"
