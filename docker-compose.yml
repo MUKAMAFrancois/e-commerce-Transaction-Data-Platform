@@ -32,14 +32,27 @@ x-airflow-common: &airflow-common
     MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
     MINIO_RAW_BUCKET: ${MINIO_RAW_BUCKET}
 
-    # Airflow does not put AIRFLOW_HOME itself on sys.path.
-    PYTHONPATH: /opt/airflow
+    # This container is also the test runner, so it needs to reach Postgres and
+    # Metabase directly rather than only through Airflow connections.
+    POSTGRES_HOST: postgres
+    POSTGRES_USER: ${POSTGRES_USER}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    POSTGRES_DB: ${POSTGRES_DB}
+    METABASE_URL: http://metabase:3000
+    METABASE_ADMIN_EMAIL: ${METABASE_ADMIN_EMAIL}
+    METABASE_ADMIN_PASSWORD: ${METABASE_ADMIN_PASSWORD}
+
+    # Airflow does not put AIRFLOW_HOME itself on sys.path; dags/ is needed so
+    # tests can import common.quality outside a DAG run.
+    PYTHONPATH: /opt/airflow:/opt/airflow/dags
 
   volumes:
     - ./dags:/opt/airflow/dags
     - ./data_generator:/opt/airflow/data_generator
     - ./config:/opt/airflow/config
     - ./data:/opt/airflow/data
+    - ./tests:/opt/airflow/tests
+    - ./pytest.ini:/opt/airflow/pytest.ini:ro
     - airflow_logs:/opt/airflow/logs
 
   networks:

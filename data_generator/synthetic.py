@@ -25,6 +25,10 @@ fake = Faker()
 
 
 def _seed_everything(seed: int) -> None:
+    # fake.unique keeps its own registry of already-issued values and survives
+    # Faker.seed(); leaving it set makes a second run in the same process draw
+    # extra values on collision and diverge from the first.
+    fake.unique.clear()
     if seed:
         random.seed(seed)
         Faker.seed(seed)

@@ -1,6 +1,6 @@
 # E-commerce Transaction Data Platform
 
-Dockerized data platform: synthetic data → MinIO → Airflow → PostgreSQL → Metabase.
+Dockerized data platform: synthetic data -> MinIO -> Airflow -> PostgreSQL -> Metabase.
 
 ## Prerequisites
 
@@ -58,7 +58,7 @@ docker compose exec airflow-scheduler python -m data_generator.synthetic --dest 
 | Flag | Default | Notes |
 | :--- | :--- | :--- |
 | `--dest` | `local` | `local`, `minio`, or `both` |
-| `--seed` | `42` | same seed → identical output; `0` for random |
+| `--seed` | `42` | same seed -> identical output; `0` for random |
 | `--customers` | 1000 | |
 | `--products` | 500 | |
 | `--orders` | 5000 | |
@@ -142,6 +142,29 @@ docker compose up -d --force-recreate metabase-init
 On a fresh stack the tables do not exist until the DAG has run once; the script
 warns and still creates the cards, which fill in on the next run.
 
+## Tests
+
+```bash
+# Everything
+docker compose exec -w /opt/airflow airflow-scheduler pytest
+
+# Unit tests only — pure functions, no running stack needed
+docker compose exec -w /opt/airflow airflow-scheduler pytest -m "not integration"
+
+# Skip the full DAG runs
+docker compose exec -w /opt/airflow airflow-scheduler pytest -m "not slow"
+```
+
+| Suite | Covers |
+| :--- | :--- |
+| `tests/unit/test_generator.py` | reproducibility, key uniqueness, referential integrity, monetary and temporal consistency |
+| `tests/unit/test_quality.py` | cleaning and every validation rule, including a regression test for mixed timestamp precision |
+| `tests/integration/test_database.py` | tables, columns, primary and foreign keys, constraint enforcement, loaded-data integrity |
+| `tests/integration/test_pipeline.py` | MinIO → Airflow → PostgreSQL end to end, archival, upsert idempotency |
+| `tests/integration/test_metabase.py` | health, auth, registered database, dashboard, every card returning rows |
+
+Integration tests create `TEST-*` rows and objects and remove them afterwards.
+
 ## Inspect
 
 ```bash
@@ -183,8 +206,8 @@ docker-compose.yml
 ## Status
 
 - [x] Infrastructure (Postgres, MinIO, Airflow, Metabase)
-- [x] Synthetic data generator → MinIO
-- [x] Airflow DAG: MinIO → transform → PostgreSQL
+- [x] Synthetic data generator -> MinIO
+- [x] Airflow DAG: MinIO -> transform -> PostgreSQL
 - [x] Metabase dashboard
-- [ ] Automated tests
+- [x] Automated tests
 - [ ] CI/CD
