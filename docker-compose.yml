@@ -93,8 +93,10 @@ services:
     restart: unless-stopped
 
 
+  # quay.io, not Docker Hub: docker.io/minio/minio now refuses anonymous pulls
+  # (401), which breaks any CI runner that is not logged in.
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: ecommerce_minio
 
     command: server /data --console-address ":9001"
@@ -125,7 +127,7 @@ services:
 
   # Creates the raw landing bucket on a fresh volume.
   minio-init:
-    image: minio/mc:latest
+    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
     container_name: ecommerce_minio_init
 
     depends_on:
