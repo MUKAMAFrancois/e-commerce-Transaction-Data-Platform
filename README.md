@@ -183,6 +183,21 @@ stack down afterwards. To reproduce the lint job locally:
 docker compose exec -w /opt/airflow airflow-scheduler ruff check .
 ```
 
+### Branch protection
+
+[config/ruleset.json](config/ruleset.json) is a GitHub repository ruleset that
+makes all three CI jobs required before anything reaches `main`, and blocks
+force-pushes and branch deletion. Apply it under
+**Settings → Rules → Rulesets → New ruleset → Import a ruleset**, or:
+
+```bash
+gh api repos/:owner/:repo/rulesets --input config/ruleset.json
+```
+
+It requires a pull request but zero approvals, so a solo maintainer is not
+locked out. Note that it does stop direct pushes to `main` — work on a branch
+and open a PR once it is active.
+
 ## Inspect
 
 ```bash
