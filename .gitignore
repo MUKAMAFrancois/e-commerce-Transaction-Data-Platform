@@ -1,0 +1,108 @@
+# Environment variables / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+# scratch pads
+drafts/
+# Python packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Generated synthetic data
+
+# Faker-generated CSV files
+data/
+generated_data/
+
+# CSV files generated locally
+*.csv
+
+# If we later want to keep sample CSVs in Git,
+# remove the *.csv rule and explicitly ignore only
+# generated files.
+
+# Airflow
+
+# Airflow logs
+logs/
+airflow_logs/
+
+# Local Airflow metadata / temporary files
+airflow.cfg
+airflow.db
+airflow-webserver.pid
+
+# Docker
+
+# Docker volumes / local persistent data
+docker-data/
+docker-volumes/
+
+# Docker override files
+docker-compose.override.yml
+
+# MinIO
+
+# Local MinIO data if mounted directly into the project
+minio_data/
+
+# PostgreSQL
+
+# Local PostgreSQL data if mounted directly into the project
+postgres_data/
+
+
+# IDE / Editor
+# 
+
+.vscode/
+.idea/
+
+*.swp
+*.swo
+
+# Operating system
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
+
+# Logs / temporary files
+
+*.log
+*.tmp
+*.temp
+
+# Jupyter
+
+.ipynb_checkpoints/
+
+# Secrets / credentials
+
+*.pem
+*.key
+secrets/
+credentials/

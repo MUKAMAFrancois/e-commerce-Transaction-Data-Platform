@@ -1,0 +1,190 @@
+services:
+  # 1. PostgreSQL
+
+  # Stores the cleaned and transformed e-commerce data.
+  # Airflow will load the processed data here.
+  # Metabase will query this database for dashboards.
+  postgres:
+    image: postgres:16
+    container_name: ecommerce_postgres
+
+    environment:
+      POSTGRES_USER: ecommerce_user
+      POSTGRES_PASSWORD: ecommerce_password
+      POSTGRES_DB: ecommerce_db
+
+    ports:
+      # Host port : Container port
+      - "5432:5432"
+
+    volumes:
+      # Persist PostgreSQL data even if the container is removed.
+      - postgres_data:/var/lib/postgresql/data
+
+    networks:
+      - ecommerce_network
+
+    restart: unless-stopped
+
+
+  # 2. MinIO
+  # S3-compatible object storage.
+  # We will use MinIO as our RAW data layer
+  # Faker -> CSV -> MinIO -> Airflow -> PostgreSQL
+ 
+  minio:
+    image: minio/minio:latest
+    container_name: ecommerce_minio
+
+    command: server /data --console-address ":9001"
+
+    environment:
+      MINIO_ROOT_USER: minio_admin
+      MINIO_ROOT_PASSWORD: minio_password
+
+    ports:
+      # S3-compatible API
+      - "9000:9000"
+
+      # MinIO web console
+      - "9001:9001"
+
+    volumes:
+      # Persist uploaded CSV files.
+      - minio_data:/data
+
+    networks:
+      - ecommerce_network
+
+    restart: unless-stopped
+
+
+  # 3. Airflow
+  # Airflow is our workflow orchestrator.
+  # It will:
+  #   1. Detect new files in MinIO
+  #   2. Read and validate the data
+  #   3. Transform the data
+  #   4. Load the result into PostgreSQL
+  #
+  # IMPORTANT:
+  # Airflow is coordinating these operations.
+  # Pandas (inside our task code) will perform the
+  # actual small-scale data transformation.
+  #
+  airflow:
+    image: apache/airflow:2.10.5
+    container_name: ecommerce_airflow
+
+    depends_on:
+      - postgres
+      - minio
+
+    environment:
+      # Use PostgreSQL as Airflow's metadata database.
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: >-
+        postgresql+psycopg2://ecommerce_user:ecommerce_password@postgres:5432/ecommerce_db
+
+      # Run Airflow with a simple local executor for the lab.
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+
+      # Disable example DAGs to keep the UI clean.
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+
+      # Airflow timezone.
+      AIRFLOW__CORE__DEFAULT_TIMEZONE: UTC
+
+    ports:
+      # Airflow Web UI
+      - "8080:8080"
+
+    volumes:
+      # Our DAGs
+      - ./dags:/opt/airflow/dags
+
+      # Python scripts / helper code
+      - ./data_generator:/opt/airflow/data_generator
+
+      # Configuration files if we need them later
+      - ./config:/opt/airflow/config
+
+      # Keep Airflow logs between container restarts.
+      - airflow_logs:/opt/airflow/logs
+
+    networks:
+      - ecommerce_network
+
+    restart: unless-stopped
+
+    # For the initial lab version we start the Airflow webserver.
+    command: webserver
+
+
+  # 4. Metabase
+  # Business Intelligence / visualization layer.
+  #
+  # Metabase connects to PostgreSQL and allows us to create:
+  #
+  #   - Revenue KPIs
+  #   - Number of orders
+  #   - Average order value
+  #   - Sales trends
+  #   - Product performance
+  #
+  metabase:
+    image: metabase/metabase:latest
+    container_name: ecommerce_metabase
+
+    depends_on:
+      - postgres
+
+    ports:
+      # Metabase web interface
+      - "3000:3000"
+
+    volumes:
+      # Persist Metabase configuration and application data.
+      - metabase_data:/metabase.db
+
+    networks:
+      - ecommerce_network
+
+    restart: unless-stopped
+
+
+# Persistent Volumes
+# Docker manages these volumes.
+#
+# This means:
+#   docker compose down
+# does NOT delete our persistent database/object-storage data.
+#
+volumes:
+
+  postgres_data:
+    name: ecommerce_postgres_data
+
+  minio_data:
+    name: ecommerce_minio_data
+
+  airflow_logs:
+    name: ecommerce_airflow_logs
+
+  metabase_data:
+    name: ecommerce_metabase_data
+
+# Shared Network
+# All services can communicate using their Docker service names.
+# For example:
+#
+# Airflow -> postgres:5432
+# Airflow -> minio:9000
+# Metabase -> postgres:5432
+#
+# We do NOT use localhost between containers.
+#
+networks:
+
+  ecommerce_network:
+    name: ecommerce_network
+    driver: bridge
