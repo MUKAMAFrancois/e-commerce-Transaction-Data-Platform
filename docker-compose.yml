@@ -268,6 +268,9 @@ services:
         condition: service_healthy
 
     environment:
+      # Without this the script's output only appears when it exits, which
+      # makes a slow or stuck provisioning run impossible to diagnose.
+      PYTHONUNBUFFERED: "1"
       METABASE_URL: http://metabase:3000
       METABASE_ADMIN_EMAIL: ${METABASE_ADMIN_EMAIL}
       METABASE_ADMIN_PASSWORD: ${METABASE_ADMIN_PASSWORD}

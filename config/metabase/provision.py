@@ -196,14 +196,16 @@ def ensure_database(mb: Metabase) -> int:
     return created["id"]
 
 
-def wait_for_tables(mb: Metabase, database_id: int, expected: int = 5, attempts: int = 20) -> None:
+def sync_tables(mb: Metabase, database_id: int, expected: int = 5, attempts: int = 10) -> None:
     """Best effort: on a fresh stack the DAG has not created the tables yet.
 
-    Native SQL cards do not need synced metadata, so a short wait and a warning
-    is enough - the next run picks the tables up.
+    Native SQL cards do not need synced metadata, so this never blocks the
+    dashboard. sync_schema is asynchronous, so an empty first response means
+    "not finished", not "nothing to find" - it has to be polled out.
     """
     mb.post(f"database/{database_id}/sync_schema", {})
     tables: list[str] = []
+
     for _ in range(attempts):
         metadata = mb.get(f"database/{database_id}/metadata")
         tables = [t["name"] for t in metadata.get("tables", [])]
@@ -211,7 +213,8 @@ def wait_for_tables(mb: Metabase, database_id: int, expected: int = 5, attempts:
             print(f"synced {len(tables)} tables: {', '.join(sorted(tables))}")
             return
         time.sleep(3)
-    print(f"warning: {len(tables)} of {expected} tables synced - run the DAG, then rerun this")
+
+    print(f"{len(tables)} of {expected} tables synced - run the DAG, then rerun this")
 
 
 def ensure_cards(mb: Metabase, database_id: int) -> dict[str, int]:
@@ -281,9 +284,9 @@ def main() -> int:
     authenticate(mb, properties)
 
     database_id = ensure_database(mb)
-    wait_for_tables(mb, database_id)
     card_ids = ensure_cards(mb, database_id)
     dashboard_id = ensure_dashboard(mb, card_ids)
+    sync_tables(mb, database_id)
 
     print(f"\ndashboard ready: {BASE}/dashboard/{dashboard_id}")
     return 0

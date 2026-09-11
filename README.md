@@ -165,6 +165,24 @@ docker compose exec -w /opt/airflow airflow-scheduler pytest -m "not slow"
 
 Integration tests create `TEST-*` rows and objects and remove them afterwards.
 
+## CI
+
+[.github/workflows/main.yml](.github/workflows/main.yml) runs on every push and
+pull request to `main`:
+
+| Job | Does |
+| :--- | :--- |
+| `lint` | `ruff check`, hadolint on the Dockerfile, `docker compose config` |
+| `unit-tests` | the 40 tests that need no containers |
+| `integration` | builds the image, starts the stack, generates data, runs the DAG, re-provisions Metabase, runs the 43 integration tests |
+
+`integration` only runs if `lint` and `unit-tests` pass, and always tears the
+stack down afterwards. To reproduce the lint job locally:
+
+```bash
+docker compose exec -w /opt/airflow airflow-scheduler ruff check .
+```
+
 ## Inspect
 
 ```bash
@@ -210,4 +228,6 @@ docker-compose.yml
 - [x] Airflow DAG: MinIO -> transform -> PostgreSQL
 - [x] Metabase dashboard
 - [x] Automated tests
-- [ ] CI/CD
+- [x] GitHub Actions CI
+- [ ] Continuous deployment
+- [ ] Architecture and workflow diagrams
