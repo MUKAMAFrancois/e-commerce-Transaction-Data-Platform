@@ -91,6 +91,27 @@ docker compose exec airflow-scheduler airflow dags test ecommerce_ingestion 2026
 Upserts are keyed on the primary key, so re-running loads the same data without
 duplicating it.
 
+### Data quality
+
+Every row is checked before load: required fields present, primary keys unique,
+numbers non-negative, statuses within their allowed set, foreign keys resolving
+against rows already in the database, and cross-field consistency
+(`total_amount = items_subtotal + shipping_fee`, `line_total = quantity × unit_price`,
+unsettled payments carrying no amount).
+
+Failing rows are **not dropped** — they are written to
+`quarantine/<dataset>/<timestamp>.csv` in the raw bucket with a
+`rejection_reason` column. If more than 5% of a dataset is rejected the task
+fails without loading, on the assumption that the feed itself is broken.
+
+After loading, a `verify` task re-checks referential integrity and business
+consistency in PostgreSQL and fails the run if anything is violated.
+
+```bash
+# Inspect quarantined rows
+docker compose exec minio sh -c 'mc alias set local http://localhost:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null && mc ls --recursive local/raw-transactions/quarantine'
+```
+
 ## Inspect
 
 ```bash
