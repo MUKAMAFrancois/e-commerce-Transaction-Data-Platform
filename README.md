@@ -112,6 +112,36 @@ consistency in PostgreSQL and fails the run if anything is violated.
 docker compose exec minio sh -c 'mc alias set local http://localhost:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null && mc ls --recursive local/ecommerce-raw/quarantine'
 ```
 
+## Dashboard
+
+`docker compose up -d` provisions Metabase automatically — admin user, the
+PostgreSQL connection, eight KPI cards and the **E-commerce KPIs** dashboard —
+via [config/metabase/provision.py](config/metabase/provision.py). It is
+idempotent, so it reruns safely.
+
+Open http://localhost:3000, sign in with `METABASE_ADMIN_EMAIL` /
+`METABASE_ADMIN_PASSWORD`, and the dashboard is on the home page.
+
+| Card | Metric |
+| :--- | :--- |
+| Total Orders | count of orders |
+| Total Revenue | `sum(amount_paid)` where payment completed |
+| Average Order Value | revenue ÷ completed payments |
+| Orders Over Time | orders per month |
+| Revenue Over Time | revenue per month |
+| Revenue by Category | `sum(line_total)` by product category |
+| Order Status Distribution | orders per status |
+| Payment Status Distribution | payments per status |
+
+To re-provision after changing the cards:
+
+```bash
+docker compose up -d --force-recreate metabase-init
+```
+
+On a fresh stack the tables do not exist until the DAG has run once; the script
+warns and still creates the cards, which fill in on the next run.
+
 ## Inspect
 
 ```bash
@@ -155,5 +185,6 @@ docker-compose.yml
 - [x] Infrastructure (Postgres, MinIO, Airflow, Metabase)
 - [x] Synthetic data generator → MinIO
 - [x] Airflow DAG: MinIO → transform → PostgreSQL
-- [ ] Metabase dashboard
+- [x] Metabase dashboard
+- [ ] Automated tests
 - [ ] CI/CD
