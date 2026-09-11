@@ -5,7 +5,7 @@ x-airflow-common: &airflow-common
   build:
     context: .
     dockerfile: Dockerfile
-  image: ecommerce/airflow:2.10.5
+  image: ${AIRFLOW_IMAGE:-ecommerce/airflow:2.10.5}
 
   # Set AIRFLOW_UID to your own `id -u` on Linux/CI or Airflow cannot write logs.
   user: "${AIRFLOW_UID:-50000}:0"
@@ -262,7 +262,7 @@ services:
   # Creates the admin user, the Postgres connection, the KPI cards and the
   # dashboard. Idempotent, so it reruns harmlessly on every `up`.
   metabase-init:
-    image: ecommerce/airflow:2.10.5
+    image: ${AIRFLOW_IMAGE:-ecommerce/airflow:2.10.5}
     container_name: ecommerce_metabase_init
 
     depends_on:
