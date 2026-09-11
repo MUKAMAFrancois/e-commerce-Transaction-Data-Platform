@@ -1,0 +1,140 @@
+name: CD
+
+# Triggered by the CI workflow finishing, never by a push directly: the `if`
+# below is what makes deployment depend on CI having actually succeeded.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish image
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      # The commit CI validated, not whatever main points at now.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Resolve image name
+        id: meta
+        run: |
+          # GHCR rejects uppercase, and the owner here is mixed case.
+          image="ghcr.io/${GITHUB_REPOSITORY,,}/airflow"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "IMAGE=$image" >> "$GITHUB_ENV"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          docker build -t "$IMAGE:sha-$SHA" -t "$IMAGE:latest" .
+          docker push "$IMAGE:sha-$SHA"
+          docker push "$IMAGE:latest"
+
+  deploy:
+    name: Deploy to test environment
+    runs-on: ubuntu-latest
+    needs: publish
+    environment: test
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create .env
+        run: |
+          cp .env.example .env
+          sed -i "s|^AIRFLOW_FERNET_KEY=.*|AIRFLOW_FERNET_KEY=$(openssl rand -base64 32 | tr '+/' '-_')|" .env
+          sed -i "s|^AIRFLOW_SECRET_KEY=.*|AIRFLOW_SECRET_KEY=$(openssl rand -hex 32)|" .env
+          sed -i "s|^AIRFLOW_UID=.*|AIRFLOW_UID=$(id -u)|" .env
+
+      # Pulling first means compose finds the image locally and never rebuilds,
+      # so what runs below is the published artifact, not a fresh local build.
+      - name: Deploy published image
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          IMAGE="${{ needs.publish.outputs.image }}:sha-$SHA"
+          echo "AIRFLOW_IMAGE=$IMAGE" >> "$GITHUB_ENV"
+          docker pull "$IMAGE"
+          AIRFLOW_IMAGE="$IMAGE" docker compose up -d
+
+      - name: Wait for the deployment to come up
+        run: |
+          containers="ecommerce_postgres ecommerce_minio ecommerce_airflow_webserver ecommerce_airflow_scheduler ecommerce_metabase"
+          deadline=$((SECONDS + 600))
+          until [ "$(docker inspect -f '{{.State.Health.Status}}' $containers 2>/dev/null | sort -u)" = "healthy" ]; do
+            if [ $SECONDS -gt $deadline ]; then
+              docker compose ps
+              docker compose logs --tail=100
+              exit 1
+            fi
+            sleep 10
+          done
+          until [ "$(docker inspect -f '{{.State.Status}}' ecommerce_metabase_init)" = "exited" ]; do
+            [ $SECONDS -gt $deadline ] && exit 1
+            sleep 5
+          done
+          docker compose ps
+
+      - name: Smoke test the deployment
+        run: |
+          docker compose exec -T airflow-scheduler python -m data_generator.synthetic --dest minio
+          docker compose exec -T airflow-scheduler airflow dags test ecommerce_ingestion 2027-01-01
+          docker compose run --rm metabase-init
+
+      - name: Validate deployment
+        run: docker compose exec -T -w /opt/airflow airflow-scheduler pytest -m integration -q
+
+      - name: Record deployment
+        if: always()
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          {
+            echo "### Deployment to \`test\`"
+            echo ""
+            echo "| Field | Value |"
+            echo "| :--- | :--- |"
+            echo "| Image | \`${{ needs.publish.outputs.image }}:sha-$SHA\` |"
+            echo "| Commit | \`$SHA\` |"
+            echo "| CI run | [#${{ github.event.workflow_run.run_number }}](${{ github.event.workflow_run.html_url }}) |"
+            echo "| Result | ${{ job.status }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --tail=200
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

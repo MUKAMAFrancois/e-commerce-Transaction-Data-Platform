@@ -183,6 +183,22 @@ stack down afterwards. To reproduce the lint job locally:
 docker compose exec -w /opt/airflow airflow-scheduler ruff check .
 ```
 
+### CD
+
+[.github/workflows/cd.yml](.github/workflows/cd.yml) is triggered by the CI
+workflow completing — not by a push — and its first job is gated on
+`github.event.workflow_run.conclusion == 'success'`. Nothing deploys unless all
+three CI jobs passed on that commit.
+
+| Job | Does |
+| :--- | :--- |
+| `publish` | builds the Airflow image and pushes it to GHCR, tagged with the validated commit SHA |
+| `deploy` | pulls that published image, brings the stack up from it, smoke-tests the data flow, then runs the 43 integration tests against the deployment |
+
+`deploy` targets the `test` GitHub Environment. It deploys the **published
+artifact** rather than rebuilding, so what is validated is exactly what was
+published. `AIRFLOW_IMAGE` in the compose file is what makes that swap possible.
+
 ### Branch protection
 
 [config/ruleset.json](config/ruleset.json) is a GitHub repository ruleset that
@@ -236,6 +252,32 @@ Dockerfile            Airflow image + generator dependencies
 docker-compose.yml
 ```
 
+## Diagrams
+
+PlantUML sources live in [docs/](docs); the PNGs beside them are rendered output.
+
+```bash
+docker run --rm -v "$PWD/docs":/work -w /work plantuml/plantuml -tpng *.puml
+```
+
+### Workflow
+
+![Workflow summary](docs/workflow.png)
+
+### Architecture
+
+Solid arrows are data flow, dotted arrows orchestration.
+
+![Architecture](docs/architecture.png)
+
+### CI/CD
+
+![CI/CD pipeline](docs/cicd.png)
+
+### Data model
+
+![Data model](docs/data-model.png)
+
 ## Status
 
 - [x] Infrastructure (Postgres, MinIO, Airflow, Metabase)
@@ -244,5 +286,6 @@ docker-compose.yml
 - [x] Metabase dashboard
 - [x] Automated tests
 - [x] GitHub Actions CI
-- [ ] Continuous deployment
-- [ ] Architecture and workflow diagrams
+- [x] Continuous deployment
+- [x] Architecture and workflow diagrams
+- [ ] reflection.md
