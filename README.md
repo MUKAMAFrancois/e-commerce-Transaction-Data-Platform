@@ -91,6 +91,16 @@ docker compose exec airflow-scheduler airflow dags test ecommerce_ingestion 2026
 Upserts are keyed on the primary key, so re-running loads the same data without
 duplicating it.
 
+![Airflow DAG](docs/images/air-flow-1.png)
+
+Dimensions load in parallel, then `orders`, then the two tables that reference
+it — so foreign keys always resolve. `verify` runs the post-load checks before
+`archive` moves the consumed files.
+
+Consumed objects end up under `processed/` in the raw bucket:
+
+![MinIO object browser](docs/images/min-io-object-store.png)
+
 ### Data quality
 
 Every row is checked before load: required fields present, primary keys unique,
@@ -132,6 +142,14 @@ Open http://localhost:3000, sign in with `METABASE_ADMIN_EMAIL` /
 | Revenue by Category | `sum(line_total)` by product category |
 | Order Status Distribution | orders per status |
 | Payment Status Distribution | payments per status |
+
+![Metabase KPI dashboard](docs/images/metabase-kpis.png)
+
+![Metabase dashboard, lower half](docs/images/metabase-kpis-2.png)
+
+`Revenue by Category` is the card that depends on the `order_items` grain —
+without a line-item table, product and category breakdowns are not expressible
+from orders alone.
 
 To re-provision after changing the cards:
 
@@ -177,7 +195,11 @@ pull request to `main`:
 | `integration` | builds the image, starts the stack, generates data, runs the DAG, re-provisions Metabase, runs the 43 integration tests |
 
 `integration` only runs if `lint` and `unit-tests` pass, and always tears the
-stack down afterwards. To reproduce the lint job locally:
+stack down afterwards.
+
+![CI run on main](docs/images/ci-cd.png)
+
+To reproduce the lint job locally:
 
 ```bash
 docker compose exec -w /opt/airflow airflow-scheduler ruff check .
@@ -213,6 +235,8 @@ gh api repos/:owner/:repo/rulesets --input config/ruleset.json
 It requires a pull request but zero approvals, so a solo maintainer is not
 locked out. Note that it does stop direct pushes to `main` — work on a branch
 and open a PR once it is active.
+
+![Branch ruleset](docs/images/rule-set.png)
 
 ## Inspect
 
